@@ -9,7 +9,7 @@ const router = express.Router();
 const dbPath = path.join(__dirname, '../../database.sqlite');
 
 // Configuração do nodemailer (para desenvolvimento)
-const transporter = nodemailer.createTransporter({
+const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
     user: process.env.EMAIL_USER || 'seu-email@gmail.com',
