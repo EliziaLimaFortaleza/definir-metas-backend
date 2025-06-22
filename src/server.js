@@ -55,7 +55,13 @@ app.use('*', (req, res) => {
   res.status(404).json({ message: 'Rota não encontrada' });
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Servidor rodando na porta ${PORT}`);
-  console.log(`📚 Sistema de Estudos Pessoal - Backend`);
-}); 
+// Para desenvolvimento local
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(PORT, () => {
+    console.log(`🚀 Servidor rodando na porta ${PORT}`);
+    console.log(`📚 Sistema de Estudos Pessoal - Backend`);
+  });
+}
+
+// Exportar para o Vercel
+module.exports = app; 
