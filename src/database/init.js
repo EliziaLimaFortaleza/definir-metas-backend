@@ -140,13 +140,16 @@ function initDatabase() {
       // Tabela de parceiros
       db.run(`CREATE TABLE IF NOT EXISTS parceiros (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        usuario_id INTEGER,
+        usuario_id INTEGER NOT NULL,
+        parceiro_usuario_id INTEGER,
         parceiro_email TEXT NOT NULL,
-        parceiro_nome TEXT,
         status TEXT DEFAULT 'pendente',
+        token_convite TEXT,
+        expires_at DATETIME,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (usuario_id) REFERENCES usuarios (id)
+        FOREIGN KEY (usuario_id) REFERENCES usuarios (id),
+        FOREIGN KEY (parceiro_usuario_id) REFERENCES usuarios (id)
       )`);
 
       // Tabela de metas compartilhadas
