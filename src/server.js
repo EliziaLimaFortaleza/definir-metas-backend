@@ -5,6 +5,9 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 require('dotenv').config();
 
+// Inicializar banco de dados
+const initDatabase = require('./database/init');
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
