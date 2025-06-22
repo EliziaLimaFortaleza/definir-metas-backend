@@ -9,6 +9,23 @@ require('dotenv').config();
 const initDatabase = require('./database/init');
 
 const app = express();
+
+// Middleware para garantir que o banco de dados está inicializado
+let dbInitialized = false;
+app.use(async (req, res, next) => {
+  if (!dbInitialized) {
+    try {
+      await initDatabase();
+      dbInitialized = true;
+      console.log('Banco de dados inicializado com sucesso para esta instância.');
+    } catch (error) {
+      console.error('Falha na inicialização do banco de dados:', error);
+      return res.status(500).json({ message: 'Erro na inicialização do servidor.' });
+    }
+  }
+  next();
+});
+
 const PORT = process.env.PORT || 5000;
 
 // Middleware de segurança
