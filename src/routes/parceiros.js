@@ -100,7 +100,16 @@ router.post('/convidar', auth, [body('email').isEmail()], async (req, res) => {
       db.run(query, [req.usuario.id, email, partnerUserId, token, expires.toISOString()], async function(err) {
         if (err) {
           db.close();
-          return res.status(500).json({ message: 'Erro ao enviar convite.' });
+          return res.status(500).json({ message: 'Erro ao criar o convite.' });
+        }
+
+        // VERIFICAÇÃO EXPLÍCITA DAS CREDENCIAIS DE EMAIL
+        if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS || process.env.EMAIL_USER === 'seu-email@gmail.com') {
+          db.close();
+          console.error("Tentativa de enviar e-mail sem configuração. O convite foi salvo, mas não enviado.");
+          return res.status(500).json({ 
+            message: 'ERRO: O serviço de e-mail não está configurado no servidor. Avise o administrador.' 
+          });
         }
 
         const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
@@ -117,8 +126,9 @@ router.post('/convidar', auth, [body('email').isEmail()], async (req, res) => {
         try {
           await transporter.sendMail(mailOptions);
           res.status(200).json({ message: 'Convite enviado com sucesso!' });
-        } catch (err) {
-          res.status(500).json({ message: 'Falha ao enviar e-mail de convite.' });
+        } catch (error) {
+          console.error('FALHA NO ENVIO (NODEMAILER):', error);
+          res.status(500).json({ message: 'Falha crítica ao enviar e-mail de convite. Verifique os logs.' });
         } finally {
           db.close();
         }
@@ -385,53 +395,4 @@ router.get('/:id/metas-compartilhadas', auth, (req, res) => {
     JOIN metas m ON mc.meta_id = m.id
     WHERE mc.parceiro_id = ?
     ORDER BY mc.created_at DESC
-  `;
-  
-  db.all(query, [req.params.id], (err, metas) => {
-    db.close();
-    
-    if (err) {
-      return res.status(500).json({ message: 'Erro ao buscar metas compartilhadas' });
-    }
-    
-    res.json(metas);
-  });
-});
-
-// Listar notificações do usuário
-router.get('/notificacoes/listar', auth, (req, res) => {
-  const db = new sqlite3.Database(dbPath);
-  
-  db.all('SELECT * FROM notificacoes WHERE usuario_id = ? ORDER BY created_at DESC LIMIT 50', 
-    [req.usuario.id], (err, notificacoes) => {
-    db.close();
-    
-    if (err) {
-      return res.status(500).json({ message: 'Erro ao buscar notificações' });
-    }
-    
-    res.json(notificacoes);
-  });
-});
-
-// Marcar notificação como lida
-router.patch('/notificacoes/:id/ler', auth, (req, res) => {
-  const db = new sqlite3.Database(dbPath);
-  
-  db.run('UPDATE notificacoes SET lida = 1 WHERE id = ? AND usuario_id = ?', 
-    [req.params.id, req.usuario.id], function(err) {
-    db.close();
-    
-    if (err) {
-      return res.status(500).json({ message: 'Erro ao marcar notificação como lida' });
-    }
-    
-    if (this.changes === 0) {
-      return res.status(404).json({ message: 'Notificação não encontrada' });
-    }
-    
-    res.json({ message: 'Notificação marcada como lida' });
-  });
-});
-
-module.exports = router; 
+  `
