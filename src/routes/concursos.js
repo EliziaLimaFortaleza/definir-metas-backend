@@ -3,9 +3,12 @@ const { body, validationResult } = require('express-validator');
 const { auth } = require('../middleware/auth');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const nodemailer = require('nodemailer');
 
 const router = express.Router();
-const dbPath = path.join(__dirname, '../../database.sqlite');
+const dbPath = process.env.NODE_ENV === 'production' 
+  ? '/tmp/database.sqlite' 
+  : path.join(__dirname, '../../database.sqlite');
 
 // Listar concursos do usuário
 router.get('/', auth, (req, res) => {

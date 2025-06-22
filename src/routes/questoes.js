@@ -7,7 +7,9 @@ const fs = require('fs');
 const sqlite3 = require('sqlite3').verbose();
 
 const router = express.Router();
-const dbPath = path.join(__dirname, '../../database.sqlite');
+const dbPath = process.env.NODE_ENV === 'production' 
+  ? '/tmp/database.sqlite' 
+  : path.join(__dirname, '../../database.sqlite');
 
 // Configuração do multer para upload de imagens
 const storage = multer.diskStorage({

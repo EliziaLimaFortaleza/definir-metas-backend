@@ -4,7 +4,9 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
 const router = express.Router();
-const dbPath = path.join(__dirname, '../../database.sqlite');
+const dbPath = process.env.NODE_ENV === 'production' 
+  ? '/tmp/database.sqlite' 
+  : path.join(__dirname, '../../database.sqlite');
 
 // Progresso geral do usuário
 router.get('/geral', auth, (req, res) => {

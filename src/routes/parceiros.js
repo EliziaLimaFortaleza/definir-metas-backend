@@ -6,7 +6,9 @@ const path = require('path');
 const nodemailer = require('nodemailer');
 
 const router = express.Router();
-const dbPath = path.join(__dirname, '../../database.sqlite');
+const dbPath = process.env.NODE_ENV === 'production' 
+  ? '/tmp/database.sqlite' 
+  : path.join(__dirname, '../../database.sqlite');
 
 // Configuração do nodemailer (para desenvolvimento)
 const transporter = nodemailer.createTransport({
