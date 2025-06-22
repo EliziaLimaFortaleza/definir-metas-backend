@@ -94,41 +94,24 @@ router.post('/convidar', auth, [body('email').isEmail()], async (req, res) => {
       }
 
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-      const inviteUrl = `${frontendUrl}/parceiros/aceitar/${token}`;
+      const mailOptions = {
+        to: email,
+        from: process.env.EMAIL_USER,
+        subject: 'Convite de Parceria de Estudos',
+        text: `Você foi convidado para ser um parceiro de estudos por ${req.usuario.nome}.\n\n` +
+              `Por favor, clique no link a seguir, ou cole no seu navegador para completar o processo:\n\n` +
+              `${frontendUrl}/parceiros/aceitar/${token}\n\n` +
+              `Se você não solicitou isso, por favor, ignore este e-mail.\n`
+      };
 
-      // Verificar se as credenciais de email estão configuradas
-      if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-        const mailOptions = {
-          to: email,
-          from: process.env.EMAIL_USER,
-          subject: 'Convite de Parceria de Estudos',
-          text: `Você foi convidado para ser um parceiro de estudos por ${req.usuario.nome}.\n\n` +
-                `Por favor, clique no link a seguir, ou cole no seu navegador para completar o processo:\n\n` +
-                `${inviteUrl}\n\n` +
-                `Se você não solicitou isso, por favor, ignore este e-mail.\n`
-        };
-
-        try {
-          await transporter.sendMail(mailOptions);
-          res.status(200).json({ message: 'Convite enviado com sucesso!' });
-        } catch (err) {
-          console.error('Erro ao enviar email:', err);
-          res.status(200).json({ 
-            message: 'Convite criado! Compartilhe este link com o parceiro:',
-            inviteUrl: inviteUrl,
-            note: 'Email não foi enviado automaticamente. Compartilhe o link manualmente.'
-          });
-        }
-      } else {
-        // Sem configuração de email, retornar o link para compartilhamento manual
-        res.status(200).json({ 
-          message: 'Convite criado! Compartilhe este link com o parceiro:',
-          inviteUrl: inviteUrl,
-          note: 'Email não configurado. Compartilhe o link manualmente.'
-        });
+      try {
+        await transporter.sendMail(mailOptions);
+        res.status(200).json({ message: 'Convite enviado com sucesso!' });
+      } catch (err) {
+        res.status(500).json({ message: 'Falha ao enviar e-mail de convite.' });
+      } finally {
+        db.close();
       }
-      
-      db.close();
     });
   });
 });
