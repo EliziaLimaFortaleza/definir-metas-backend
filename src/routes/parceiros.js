@@ -66,68 +66,81 @@ router.post('/convidar', auth, [body('email').isEmail()], async (req, res) => {
   const { email } = req.body;
   const db = new sqlite3.Database(dbPath);
 
-  db.get('SELECT * FROM usuarios WHERE email = ?', [email], (err, partnerUser) => {
+  // Verificar se não está tentando adicionar a si mesmo
+  if (email === req.usuario.email) {
+    db.close();
+    return res.status(400).json({ message: 'Você não pode adicionar a si mesmo como parceiro.' });
+  }
+
+  // Verificar se já existe uma parceria pendente ou aceita
+  db.get('SELECT * FROM parceiros WHERE usuario_id = ? AND parceiro_email = ?', 
+    [req.usuario.id, email], (err, existingPartnership) => {
     if (err) {
       db.close();
       return res.status(500).json({ message: 'Erro no banco de dados.' });
     }
-    if (!partnerUser) {
+    
+    if (existingPartnership) {
       db.close();
-      return res.status(404).json({ message: 'Usuário parceiro não encontrado no sistema.' });
-    }
-    if (partnerUser.id === req.usuario.id) {
-      db.close();
-      return res.status(400).json({ message: 'Você não pode adicionar a si mesmo como parceiro.' });
+      return res.status(400).json({ message: 'Já existe um convite pendente ou parceria ativa com este e-mail.' });
     }
 
-    const token = crypto.randomBytes(20).toString('hex');
-    const expires = new Date(Date.now() + 3600000 * 24); // 24 horas
+    // Verificar se o usuário já existe no sistema
+    db.get('SELECT * FROM usuarios WHERE email = ?', [email], (err, partnerUser) => {
+      const partnerUserId = partnerUser ? partnerUser.id : null;
+      
+      const token = crypto.randomBytes(20).toString('hex');
+      const expires = new Date(Date.now() + 3600000 * 24); // 24 horas
 
-    const query = `
-      INSERT INTO parceiros (usuario_id, parceiro_email, parceiro_usuario_id, status, token_convite, expires_at)
-      VALUES (?, ?, ?, 'pendente', ?, ?)
-    `;
-    db.run(query, [req.usuario.id, email, partnerUser.id, token, expires.toISOString()], async function(err) {
-      if (err) {
-        db.close();
-        return res.status(500).json({ message: 'Erro ao enviar convite.' });
-      }
+      const query = `
+        INSERT INTO parceiros (usuario_id, parceiro_email, parceiro_usuario_id, status, token_convite, expires_at)
+        VALUES (?, ?, ?, 'pendente', ?, ?)
+      `;
+      
+      db.run(query, [req.usuario.id, email, partnerUserId, token, expires.toISOString()], async function(err) {
+        if (err) {
+          db.close();
+          return res.status(500).json({ message: 'Erro ao enviar convite.' });
+        }
 
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-      const mailOptions = {
-        to: email,
-        from: process.env.EMAIL_USER,
-        subject: 'Convite de Parceria de Estudos',
-        text: `Você foi convidado para ser um parceiro de estudos por ${req.usuario.nome}.\n\n` +
-              `Por favor, clique no link a seguir, ou cole no seu navegador para completar o processo:\n\n` +
-              `${frontendUrl}/parceiros/aceitar/${token}\n\n` +
-              `Se você não solicitou isso, por favor, ignore este e-mail.\n`
-      };
+        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+        const mailOptions = {
+          to: email,
+          from: process.env.EMAIL_USER,
+          subject: 'Convite de Parceria de Estudos',
+          text: `Você foi convidado para ser um parceiro de estudos por ${req.usuario.nome}.\n\n` +
+                `Por favor, clique no link a seguir, ou cole no seu navegador para completar o processo:\n\n` +
+                `${frontendUrl}/parceiros/aceitar/${token}\n\n` +
+                `Se você não solicitou isso, por favor, ignore este e-mail.\n`
+        };
 
-      try {
-        await transporter.sendMail(mailOptions);
-        res.status(200).json({ message: 'Convite enviado com sucesso!' });
-      } catch (err) {
-        res.status(500).json({ message: 'Falha ao enviar e-mail de convite.' });
-      } finally {
-        db.close();
-      }
+        try {
+          await transporter.sendMail(mailOptions);
+          res.status(200).json({ message: 'Convite enviado com sucesso!' });
+        } catch (err) {
+          res.status(500).json({ message: 'Falha ao enviar e-mail de convite.' });
+        } finally {
+          db.close();
+        }
+      });
     });
   });
 });
 
 // Aceitar convite
-router.post('/aceitar/:token', auth, (req, res) => {
+router.post('/aceitar/:token', (req, res) => {
   const { token } = req.params;
   const db = new sqlite3.Database(dbPath);
 
   const query = `
-    SELECT * FROM parceiros 
-    WHERE token_convite = ? 
-      AND parceiro_usuario_id = ? 
-      AND expires_at > ?
+    SELECT p.*, u.nome as usuario_nome 
+    FROM parceiros p
+    LEFT JOIN usuarios u ON p.usuario_id = u.id
+    WHERE p.token_convite = ? 
+      AND p.expires_at > ?
   `;
-  db.get(query, [token, req.usuario.id, new Date().toISOString()], (err, partnership) => {
+  
+  db.get(query, [token, new Date().toISOString()], (err, partnership) => {
     if (err || !partnership) {
       db.close();
       return res.status(400).json({ message: 'Token de convite inválido ou expirado.' });
@@ -136,6 +149,27 @@ router.post('/aceitar/:token', auth, (req, res) => {
     if (partnership.status === 'aceito') {
       db.close();
       return res.status(400).json({ message: 'Convite já aceito.' });
+    }
+
+    // Se o parceiro não tem usuário_id, significa que ainda não está cadastrado
+    if (!partnership.parceiro_usuario_id) {
+      db.close();
+      return res.status(200).json({ 
+        message: 'Convite válido. Por favor, cadastre-se primeiro.',
+        requiresRegistration: true,
+        inviterName: partnership.usuario_nome
+      });
+    }
+
+    // Se chegou aqui, o usuário está logado e pode aceitar o convite
+    if (!req.usuario) {
+      db.close();
+      return res.status(401).json({ message: 'Usuário não autenticado.' });
+    }
+
+    if (req.usuario.id !== partnership.parceiro_usuario_id) {
+      db.close();
+      return res.status(403).json({ message: 'Este convite não é para você.' });
     }
 
     db.run("UPDATE parceiros SET status = 'aceito', token_convite = NULL, expires_at = NULL WHERE id = ?", [partnership.id], (err) => {
@@ -152,7 +186,53 @@ router.post('/aceitar/:token', auth, (req, res) => {
       db.run(inverseQuery, [partnership.parceiro_usuario_id, partnership.usuario_id, req.usuario.email], (err) => {
         db.close();
         if (err) {
-          // A lógica de rollback seria ideal aqui, mas para simplicidade, apenas logamos o erro
+          console.error('Erro ao criar parceria inversa:', err);
+        }
+        res.status(200).json({ message: 'Parceria aceita com sucesso!' });
+      });
+    });
+  });
+});
+
+// Aceitar convite após registro (para usuários que se cadastraram após receber o convite)
+router.post('/aceitar-apos-registro/:token', auth, (req, res) => {
+  const { token } = req.params;
+  const db = new sqlite3.Database(dbPath);
+
+  const query = `
+    SELECT * FROM parceiros 
+    WHERE token_convite = ? 
+      AND parceiro_email = ?
+      AND expires_at > ?
+  `;
+  
+  db.get(query, [token, req.usuario.email, new Date().toISOString()], (err, partnership) => {
+    if (err || !partnership) {
+      db.close();
+      return res.status(400).json({ message: 'Token de convite inválido ou expirado.' });
+    }
+
+    if (partnership.status === 'aceito') {
+      db.close();
+      return res.status(400).json({ message: 'Convite já aceito.' });
+    }
+
+    // Atualizar o parceiro_usuario_id e aceitar o convite
+    db.run("UPDATE parceiros SET status = 'aceito', parceiro_usuario_id = ?, token_convite = NULL, expires_at = NULL WHERE id = ?", 
+      [req.usuario.id, partnership.id], (err) => {
+      if (err) {
+        db.close();
+        return res.status(500).json({ message: 'Erro ao aceitar convite.' });
+      }
+      
+      // Criar a parceria inversa
+      const inverseQuery = `
+        INSERT INTO parceiros (usuario_id, parceiro_usuario_id, parceiro_email, status)
+        VALUES (?, ?, ?, 'aceito')
+      `;
+      db.run(inverseQuery, [req.usuario.id, partnership.usuario_id, partnership.parceiro_email], (err) => {
+        db.close();
+        if (err) {
           console.error('Erro ao criar parceria inversa:', err);
         }
         res.status(200).json({ message: 'Parceria aceita com sucesso!' });
